@@ -1,0 +1,152 @@
+---
+title: "PML Prediction Assignment Writeup"
+author: "Pao Ying Heng"
+date: "September 20, 2019"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##1. Introduction
+The goal of this assignment is to predict the manner in which 6 participants performed barbell lifts. This report will describe how the machine learning algorithm is built, and which model was chosen based on cross validation and out-of-sample error. The algorithm is then used to predict 20 test cases, the results of which are submitted onto the Coursera Project Prediction Quiz for auto-grading. 
+
+
+##2. Loading the Relevant Libraries
+```{r, message=FALSE}
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+##3. Getting & Cleaning the Data
+```{r}
+#Set the download urls for the training and testing files
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+#Reading the training and testing files
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+
+The first seven variables in both datasets are descriptive variables, so we will remove them as they are irrelevant to our ML algorithm.
+```{r}
+training <- training[,-(1:7)]
+testing <- testing[,-(1:7)]
+```
+
+
+The training dataset is then divided into two parts: `ptraining` for the training process (70% of data), and `ptesting` for validations (30% of data). 
+
+```{r}
+set.seed(34334)
+intrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+ptraining <- training[intrain,]
+ptesting <- training[-intrain,]
+```
+
+###3.1 Cleaning the `ptraining` data
+```{r}
+#Identify near zero variables in the ptraining set
+nearZeroVar(ptraining, saveMetrics=TRUE) 
+
+#Now that we've identified the near zero variables, we're going to remove them from the ptraining set 
+nzv <- names(ptraining) %in% c("kurtosis_roll_belt", "kurtosis_picth_belt","kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt","max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm","var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm","stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm","kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm","max_roll_arm","min_roll_arm","min_pitch_arm","amplitude_roll_arm","amplitude_pitch_arm","kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell","skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm","skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm","amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm","stddev_yaw_forearm", "var_yaw_forearm")
+
+ptraining <- ptraining[!nzv]
+
+#Now that we've removed near zero variables, we need to remove columns containing NA's
+ptraining <- ptraining[ , colSums(is.na(ptraining)) == 0]
+dim(ptraining) 
+```
+We've cleaned the `ptraining` set and reduced the number of variables to 53.
+
+###3.2 Cleaning the `ptesting` data
+```{r, results=FALSE}
+#Identify near zero variables in the ptesting set and removing them
+nearZeroVar(ptesting, saveMetrics=TRUE)
+```
+
+```{r}
+nzv2 <- names(ptesting) %in% c("kurtosis_roll_belt", "kurtosis_picth_belt","kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt","max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm","var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm","stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm","kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm","max_roll_arm","min_roll_arm","min_pitch_arm","amplitude_roll_arm","amplitude_pitch_arm","kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell","skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm","skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm","amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm","stddev_yaw_forearm", "var_yaw_forearm")
+
+ptesting <- ptesting[!nzv2]
+
+#Remove columns containing NA's
+ptesting <- ptesting[ , colSums(is.na(ptesting)) == 0]
+dim(ptesting)
+```
+
+###3.3 Cleaning the `testing` dataset
+```{r, results=FALSE}
+#Identify near zero variables in the testing dataset and removing them
+nearZeroVar(testing, saveMetrics=TRUE)
+```
+
+```{r}
+nzv3 <- names(testing) %in% c("kurtosis_roll_belt", "kurtosis_picth_belt","kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt","max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm","var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm","stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm","kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm","max_roll_arm","min_roll_arm","min_pitch_arm","amplitude_roll_arm","amplitude_pitch_arm","kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell","skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm","skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm","amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm","stddev_yaw_forearm", "var_yaw_forearm")
+
+testing <- testing[!nzv3]
+
+#Remove columns containing NA's
+testing <- testing[ , colSums(is.na(testing)) == 0]
+dim(testing)
+```
+
+##4. Prediction Models
+###4.1 Model 1: Regression Tree
+```{r}
+modRT <- rpart(classe ~ ., data=ptraining, method="class")
+
+#Cross Validation of the Regression Tree model
+valRT <- predict(modRT, ptesting, type = "class")
+
+confusionMatrix(valRT, ptesting$classe)
+##Calculating the out-of-sample error
+1 - as.numeric(confusionMatrix(valRT, ptesting$classe)$overall[1])
+```
+The accuracy of the Regression Tree model in predicting is approximately 76%, while its out-of-sample error is approximately 25%, which aren't that great.
+
+
+###4.2 Model 2: Random Forest
+```{r}
+modRF <- randomForest(classe ~. , data=ptraining)
+
+#Cross Validation of the Random Forest model
+valRF <- predict(modRF, ptesting)
+
+confusionMatrix(valRF, ptesting$classe) 
+
+##Calculating the out-of-sample error
+1 - as.numeric(confusionMatrix(valRF, ptesting$classe)$overall[1])
+```
+The accuracy of the Random Forest model is 99.9%, while its out-of-sample error is 0.6%.
+
+Our findings suggest that Model 2 (Random Forest) is superior to Model 1 (Regression Tree). Therefore, we will use this model to predict our test samples.
+
+##5. Applying the Selected Model to the `testing` dataset
+Before we predict on test samples from the `testing` set, we need to check that its variables are identical to that of the trained algorithm (especially factor levels) or we may run into problems.
+
+```{r}
+str(testing)
+```
+As we can see, the `testing` set has the variable `problem_id` (class: int) as opposed to the variable `classe` in the `training_set` (class: factor with 5 levels). We'll need to convert the `problem_id` class to a factor, and ensure that the levels are identical to that of the `training_set` (5 levels: A,B,C,D,E)
+
+```{r}
+testing$problem_id <- as.factor(testing$problem_id)
+testing$problem_id = factor(c(1:5))
+levels(testing$problem_id) <- c("A", "B", "C", "D", "E")
+```
+
+Once this is done, we can then predict the test samples:
+```{r}
+prediction <- predict(modRF, testing)
+print(prediction)
+```
+
+##Conclusion
+The selected model predicted all 20 test cases correctly (100% accuracy).
