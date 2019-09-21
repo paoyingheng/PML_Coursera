@@ -2,9 +2,10 @@
 title: "PML Prediction Assignment Writeup"
 author: "Pao Ying Heng"
 date: "September 20, 2019"
-output: 
-  html_document: 
+output:
+  html_document:
     keep_md: yes
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -109,7 +110,7 @@ confusionMatrix(valRT, ptesting$classe)
 ##Calculating the out-of-sample error
 1 - as.numeric(confusionMatrix(valRT, ptesting$classe)$overall[1])
 ```
-The accuracy of the Regression Tree model in predicting is approximately 76%, while its out-of-sample error is approximately 25%, which aren't that great.
+The accuracy of the Regression Tree model in predicting is approximately 76%, while its out-of-sample error is approximately 24%, which aren't that great.
 
 
 ###4.2 Model 2: Random Forest
@@ -124,7 +125,7 @@ confusionMatrix(valRF, ptesting$classe)
 ##Calculating the out-of-sample error
 1 - as.numeric(confusionMatrix(valRF, ptesting$classe)$overall[1])
 ```
-The accuracy of the Random Forest model is 99.9%, while its out-of-sample error is 0.6%.
+The accuracy of the Random Forest model is 99%, while its out-of-sample error is 0.6%.
 
 Our findings suggest that Model 2 (Random Forest) is superior to Model 1 (Regression Tree). Therefore, we will use this model to predict our test samples.
 
